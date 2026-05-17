@@ -1,167 +1,223 @@
-import customtkinter as ctk 
-from tkinter import messagebox
-from threading import Thread
-from database import get_tasks, add_task, get_notes, add_note
-from analytics import *
-from timer import *
-from theme import *
-import datetime
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
+import streamlit as st
+import psutil
+import sqlite3
+import pandas as pd
+from datetime import datetime
 
-app = ctk.CTk()
-app.geometry("1600x900")
-app.title("NeuroDesk AI")
-app.configure(fg_color=BACKGROUND)
-              
-#sidebar
-sidebar = ctk.CTkFrame(app, width=260, fg_color="#0B1627")
-sidebar.pack(side="left", fill="y")
-
-logo = ctk.CTkLabel(
-    sidebar, text="NEURODESK", font=("Orbitron", 28, "bold"), text_color=PRIMARY
+# PAGE CONFIG
+st.set_page_config(
+    page_title="NeuroDesk AI",
+    page_icon="🧠",
+    layout="wide"
 )
-logo.pack(pady=40)
 
-#main area
-main = ctk.CTkFrame(app, fg_color=BACKGROUND)
-main.pack( fill="both", expand=True)
+# DATABASE
+conn = sqlite3.connect("neurodesk.db", check_same_thread=False)
+cursor = conn.cursor()
 
-#top bar
-header = ctk.CTkFrame(main, height=80, fg_color="#08101C")
-header.pack(fill="x", padx=20, pady=20)
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS tasks(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task TEXT,
+    status TEXT
+)
+""")
 
-current_time = ctk.CTkLabel(header, text="", font=("Poppins", 18), text_color=TEXT)
-current_time.pack(side="right", padx=20)
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS notes(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content TEXT
+)
+""")
 
-def update_clock():
-    now = datetime.datetime.now().strftime("%A | %d %B %Y | %I:%M:%S:")
-    current_time.configure(text=now)
-    app.after(1000, update_clock)
-update_clock()
+conn.commit()
 
+# CUSTOM CSS
+st.markdown("""
+<style>
+body {
+    background-color: #07111F;
+}
 
-#dashboard grid
-content = ctk.CTkFrame(main, fg_color=BACKGROUND)
-content.pack(fill="both", expand=True, padx=20, pady=10)
+.main {
+    background: #07111F;
+    color: white;
+}
 
-#cpu card
-cpu_card = ctk.CTkFrame(content, corner_radius=25, fg_color=CARD)
-cpu_card.grid(row=0, column=0, padx=15, pady=15, sticky="nsew")
+.stApp {
+    background: linear-gradient(to bottom right, #07111F, #111827);
+}
 
-cpu_title = ctk.CTkLabel(cpu_card, text="CPU USAGE", font=("Poppins", 22, "bold"), text_color=PRIMARY)
-cpu_title.pack(pady=(20))
+.card {
+    background: #111827;
+    padding: 25px;
+    border-radius: 20px;
+    box-shadow: 0 0 20px rgba(0,255,255,0.1);
+}
 
-cpu_value = ctk.CTkLabel(cpu_card, text="0%", font=("Orbitron", 40, "bold"), text_color=SUCCESS)
-cpu_value.pack(pady=(20))
+.big-text {
+    font-size: 40px;
+    font-weight: bold;
+    color: cyan;
+}
 
-#ram card
-ram_card = ctk.CTkFrame(content, corner_radius=25, fg_color=CARD)
-ram_card.grid(row=0, column=1, padx=15, pady=15, sticky="nsew")
+.title {
+    font-size: 55px;
+    font-weight: bold;
+    color: #00F5FF;
+    text-align: center;
+}
 
-ram_title = ctk.CTkLabel(ram_card, text="RAM USAGE", font=("Poppins", 22, "bold"), text_color=SECONDARY)
-ram_title.pack(pady=(20))
+.subtitle {
+    color: #9CA3AF;
+    text-align: center;
+    margin-bottom: 40px;
+}
+</style>
+""", unsafe_allow_html=True)
 
-ram_value = ctk.CTkLabel(ram_card, text="0%", font=("Orbitron", 40, "bold"), text_color=WARNING)
-ram_value.pack(pady=(20))
+# HEADER
+st.markdown('<div class="title">NEURODESK AI</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="subtitle">Elite Futuristic Productivity Dashboard</div>',
+    unsafe_allow_html=True
+)
 
+# SIDEBAR
+st.sidebar.title("Navigation")
 
-#task manager 
+page = st.sidebar.radio(
+    "Go To",
+    [
+        "Dashboard",
+        "Tasks",
+        "Notes",
+        "Analytics"
+    ]
+)
 
-task_card = ctk.CTkFrame(content, corner_radius=25, fg_color=CARD)
-task_card.grid(row=1, column=0,  padx=15, pady=15, sticky="nsew")
+# DASHBOARD
+if page == "Dashboard":
 
-ctk.CTkLabel(task_card, text="Smart Tasks", font=("Poppins", 24, "bold"), text_color=PRIMARY).pack(pady=(15))
+    col1, col2 = st.columns(2)
 
-task_input = ctk.CTkEntry(task_card, placeholder_text="Enter a task...", width=300, height=45, corner_radius=15)
-task_input.pack(pady=(10))
+    cpu = psutil.cpu_percent()
+    ram = psutil.virtual_memory().percent
 
-task_box = ctk.CTkTextbox(task_card, width=500, height=250)
-task_box.pack(pady=(15))
+    with col1:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("CPU Usage")
+        st.markdown(
+            f'<div class="big-text">{cpu}%</div>',
+            unsafe_allow_html=True
+        )
+        st.progress(int(cpu))
+        st.markdown('</div>', unsafe_allow_html=True)
 
-def refresh_tasks():
-    task_box.delete("1.0", "end")
-    tasks = get_tasks()
-    for task in tasks:
-        status = "✅" if task[2] == "Completed" else "⏳"
-        task_box.insert("end", f"{status} {task[1]}\n")
+    with col2:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.subheader("RAM Usage")
+        st.markdown(
+            f'<div class="big-text">{ram}%</div>',
+            unsafe_allow_html=True
+        )
+        st.progress(int(ram))
+        st.markdown('</div>', unsafe_allow_html=True)
 
-        def add_new_task():
-            text = task_input.get()
-            if text:
-                add_task(text)
-                task_input.delete(0, "end")
-                refresh_tasks()
-            else:
-                messagebox.showwarning("Input Error", "Please enter a task.")
-                add_btn = ctk.CTkButton(task_card, text="Add Task", command=add_new_task, height=45, corner_radius=15, fg_color=PRIMARY, text_color="black")
-                add_btn.pack(pady=(10))
+    st.markdown("---")
 
-                refresh_tasks()
+    current_time = datetime.now().strftime("%A, %d %B %Y | %I:%M:%S %p")
 
-                #notes panel
-notes_card = ctk.CTkFrame(content, corner_radius=25, fg_color=CARD)
-notes_card.grid(row=1, column=1, padx=15, pady=15, sticky="nsew")
+    st.info(f"Current Time: {current_time}")
 
-ctk.CTkLabel(notes_card, text="AI Notes", font=("Poppins", 24, "bold"), text_color=SECONDARY).pack(pady=(15))
-notes_input = ctk.CTkEntry(notes_card, placeholder_text="Enter a note...", width=450, height=150, corner_radius=15)
-notes_input.pack(pady=(10))
+# TASK PAGE
+elif page == "Tasks":
 
-notes_view = ctk.CTkTextbox(notes_card, width=450, height=150)
-notes_view.pack(pady=(10))
+    st.header("Smart Task Manager")
 
-def refresh_notes():
-    notes_view.delete("1.0", "end")
-    for note in get_notes():
-        notes_view.insert("end", f"📝 {note[1]}\n")
+    task = st.text_input("Enter New Task")
 
-        refresh_notes()
+    if st.button("Add Task"):
+        if task:
+            cursor.execute(
+                "INSERT INTO tasks(task, status) VALUES(?, ?)",
+                (task, "Pending")
+            )
+            conn.commit()
+            st.success("Task Added Successfully")
 
-        def save_note():
-            text = notes_input.get("1.0", "end")
-            if text.strip():
-                add_note(text)
-                notes_input.delete("1.0", "end")
-                refresh_notes()
-            else:
-                messagebox.showwarning("Input Error", "Please enter a note.")
-                save_btn = ctk.CTkButton(notes_card, text="Save Note", command=save_note, height=45, corner_radius=15, fg_color=SECONDARY, text_color="black")
-                save_btn.pack(pady=(10))
+    cursor.execute("SELECT * FROM tasks")
+    tasks = cursor.fetchall()
 
-#pomodoro timer
-timer_card = ctk.CTkFrame(content, corner_radius=25, fg_color=CARD)
-timer_card.grid(row=2, column=0, columnspan=2, padx=15, pady=15, sticky="nsew")
+    if tasks:
 
-ctk.CTkLabel(timer_card, text="Focus Mode", font=("Orbitron", 24, "bold"), text_color=SUCCESS).pack(pady=(20))
-timer_label = ctk.CTkLabel(timer_card, text="25:00", font=("Orbitron", 60, "bold"), text_color=TEXT)
-timer_label.pack(pady=(10))
+        data = []
 
-def update_timer_display(text):
-    timer_label.configure(text=text)
+        for task in tasks:
+            data.append({
+                "ID": task[0],
+                "Task": task[1],
+                "Status": task[2]
+            })
 
-def run_pomodoro():
-      Thread(target=start_timer, args=(1500, update_timer_display),daemon=True).start()
-start_btn = ctk.CTkButton(timer_card, text="Start Focus Session", command=run_pomodoro, height=50, width=300, corner_radius=20, fg_color=SUCCESS, text_color="black")
-start_btn.pack(pady=(20))
+        df = pd.DataFrame(data)
 
-#live update
+        st.dataframe(df, use_container_width=True)
 
-def update_stats():
-    cpu = get_cpu()
-    ram = get_ram()
+# NOTES PAGE
+elif page == "Notes":
 
-    cpu_value.configure(text=f"{cpu}%")
-    ram_value.configure(text=f"{ram}%")
+    st.header("AI Notes")
 
-    app.after(5000, update_stats)
-update_stats()
+    note = st.text_area("Write Your Notes")
 
+    if st.button("Save Note"):
+        if note.strip():
+            cursor.execute(
+                "INSERT INTO notes(content) VALUES(?)",
+                (note,)
+            )
+            conn.commit()
+            st.success("Note Saved")
 
-#responsive layout
-content.grid_rowconfigure(0, weight=1)
-content.grid_rowconfigure(1, weight=1)
-content.grid_rowconfigure(2, weight=1)
-content.grid_columnconfigure(0, weight=1)
-content.grid_columnconfigure(1, weight=1)
-app.mainloop()
+    cursor.execute("SELECT * FROM notes")
+    notes = cursor.fetchall()
+
+    st.subheader("Saved Notes")
+
+    for note in notes:
+        st.markdown(f"""
+        <div class="card">
+        {note[1]}
+        </div>
+        <br>
+        """, unsafe_allow_html=True)
+
+# ANALYTICS PAGE
+elif page == "Analytics":
+
+    st.header("System Analytics")
+
+    cpu = psutil.cpu_percent(interval=1)
+    ram = psutil.virtual_memory().percent
+    disk = psutil.disk_usage('/').percent
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("CPU", f"{cpu}%")
+
+    with col2:
+        st.metric("RAM", f"{ram}%")
+
+    with col3:
+        st.metric("Disk", f"{disk}%")
+
+    st.progress(int(cpu))
+    st.progress(int(ram))
+    st.progress(int(disk))
+
+# FOOTER
+st.markdown("---")
+st.caption("NeuroDesk AI © 2026 | Premium Python Streamlit Application") 
